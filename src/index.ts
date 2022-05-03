@@ -1,275 +1,149 @@
-import dotenv from "dotenv";
+import web3 = require("@solana/web3.js");
 import {
   createMint,
-  getMint,
-  getOrCreateAssociatedTokenAccount,
-  getAccount,
-  mintTo,
-  setAuthority,
-  AuthorityType,
   createAccount,
   createAssociatedTokenAccount,
+  mintTo,
   transfer,
+  getAccount,
   burn,
   closeAccount,
-  approve,
 } from "@solana/spl-token";
-import {
-  clusterApiUrl,
-  Connection,
-  Keypair,
-  LAMPORTS_PER_SOL,
-  PublicKey,
-} from "@solana/web3.js";
-
-dotenv.config();
+import Dotenv from "dotenv";
+Dotenv.config();
 
 async function main() {
-  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
-  const secretKey = Uint8Array.from(secret);
-  const owner = Keypair.fromSecretKey(secretKey);
+  const user = initializeKeypair();
+  const connection = new web3.Connection(web3.clusterApiUrl("devnet"));
+  await connection.requestAirdrop(user.publicKey, web3.LAMPORTS_PER_SOL * 1);
 
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-
-  // const totalSupply = 1000000000;
-  const mintAmount = 1000;
-  const transferAmount = 500;
-  // const tokenData = await createNewToken(connection, owner, totalSupply);
-
-  const mintAuthority = Keypair.generate();
-
-  // returns "PublicKey"
+  // createMint returns "PublicKey" of Mint
   const mint = await createMint(
-    connection, // connection
-    owner, // payer
-    mintAuthority.publicKey, // mint authority
+    connection, // connection to Solana cluster
+    user, // payer
+    user.publicKey, // mint authority
     null, // freeze authority
     2 // decimals
   );
 
-  console.log(mint.toString());
+  console.log(
+    `https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`
+  );
 
-  const tokenKeyPair = Keypair.generate();
+  // generate a new Keypair for the Token Account
+  const tokenKeyPair = web3.Keypair.generate();
 
-  console.log(tokenKeyPair.publicKey.toString());
-
-  //returns "PublicKey"
+  // createAccount returns "PublicKey" of Token Account
   const tokenAccount = await createAccount(
-    connection, // connection
-    owner, // payer
+    connection, // connection to Solana cluster
+    user, // payer
     mint, // token mint
-    owner.publicKey, // owner
-    tokenKeyPair // token address
+    user.publicKey, // token account owner
+    tokenKeyPair // new token address
   );
 
-  console.log(tokenAccount.toString());
+  console.log(
+    `https://explorer.solana.com/address/${tokenAccount.toString()}?cluster=devnet`
+  );
 
-  //returns "PublicKey"
+  // createAssociatedTokenAccount returns "PublicKey" of Associated Token Account
+  // Associated Token Account is PDA with user address and mint address as seeds
   const associatedTokenAccount = await createAssociatedTokenAccount(
-    connection, //connection
-    owner, // payer
+    connection, //connection to Solana cluster
+    user, // payer
     mint, // token mint
-    owner.publicKey // owner
+    user.publicKey // token account owner
   );
 
-  console.log(associatedTokenAccount.toString());
-
-  // returns "Account"
-  const getOrCreate = await getOrCreateAssociatedTokenAccount(
-    connection, // connection
-    owner, // payer
-    mint, // token mint
-    owner.publicKey // owner
+  console.log(
+    `https://explorer.solana.com/address/${associatedTokenAccount.toString()}?cluster=devnet`
   );
 
-  console.log(getOrCreate.address.toString());
-
-  // mint to Token Account
-  // returns "TransactionSigniture"
+  // mintTo returns "TransactionSignature"
   const mintTokens = await mintTo(
-    connection, // connection
-    owner, // payer
+    connection, // connection to Solana cluster
+    user, // payer
     mint, // mint
-    associatedTokenAccount, // token account mint to
-    mintAuthority, // mint authority
-    mintAmount // amount tokens to mint
+    associatedTokenAccount, // mint tokens to this token account
+    user, // mint authority
+    10000 // amount tokens to mint
   );
 
-  console.log(mintTokens);
+  console.log(`https://explorer.solana.com/tx/${mintTokens}?cluster=devnet`);
 
   // check Account.amount = mintAmount
   const Account = await getAccount(connection, associatedTokenAccount);
-  console.log(Number(Account.amount));
+  console.log(
+    `https://explorer.solana.com/address/${Account.address}?cluster=devnet`
+  );
 
-  const receiver = Keypair.generate();
+  // generate new Keypair for receiver
+  const receiver = web3.Keypair.generate();
+
+  // create new Associated Token Account for receiver
   const receiverAssociatedTokenAccount = await createAssociatedTokenAccount(
-    connection,
-    owner,
-    mint,
-    receiver.publicKey
+    connection, //connection to Solana cluster
+    user, // payer
+    mint, // token mint
+    receiver.publicKey // token account owner
   );
 
   // transfer Tokens
-  // returns "TransactionSigniture"
+  // returns "TransactionSignature"
   const tokenTransfer = await transfer(
-    connection, // connection
-    owner, // payer
+    connection, // connection to Solana cluster
+    user, // payer
     associatedTokenAccount, // Token Account send Tokens
     receiverAssociatedTokenAccount, // Token Account receive Tokens
-    owner, // owner of Token Account to send from
-    transferAmount // amount of Tokens to send
+    user, // owner of Token Account to send from
+    2500 // amount of Tokens to send
   );
 
-  console.log(tokenTransfer);
+  console.log(`https://explorer.solana.com/tx/${tokenTransfer}?cluster=devnet`);
+
+  console.log(
+    `https://explorer.solana.com/address/${receiverAssociatedTokenAccount}?cluster=devnet`
+  );
 
   // burn Tokens
-  // returns "TransactionSigniture"
+  // returns "TransactionSignature"
   const burnToken = await burn(
-    connection, // connection
-    owner, // payer
+    connection, // connection to Solana cluster
+    user, // payer
     associatedTokenAccount, // Token Account burn from
     mint, // Token Mint
-    owner, // Token Account owner
-    100 // Amount to burn
+    user, // Token Account owner
+    2500 // Amount to burn
   );
 
-  console.log(burnToken);
+  console.log(`https://explorer.solana.com/tx/${burnToken}?cluster=devnet`);
 
-  // // close Token Account
-  // // returns "TransactionSigniture"
-  // const closeTokenAccount = await closeAccount(
-  //   connection, // connection
-  //   owner, // payer
-  //   tokenAccount, // token account to close
-  //   owner.publicKey, // account to return token account rent to
-  //   owner // token account owner
-  // );
-
-  // console.log(closeTokenAccount);
-
-  // new keypair to represent delegate
-  const delegate = Keypair.generate();
-
-  // delegate tokens for transfer
+  // close Token Account
   // returns "TransactionSignature"
-  const delegateTokens = await approve(
-    connection, // connection to Solana
-    owner, // payer
-    associatedTokenAccount, // Token Account to delegate from
-    delegate.publicKey, // delegate address
-    owner, // Token Account owner
-    100 // amount approved for delegate to transfer
+  const closeTokenAccount = await closeAccount(
+    connection, // connection to Solana cluster
+    user, // payer
+    tokenAccount, // token account to close
+    user.publicKey, // account to return token account rent to
+    user // token account owner
   );
 
-  console.log(delegateTokens);
-
-  console.log("test");
-
-  // new keypair to represent new owner
-  const newOwner = Keypair.generate();
-
-  // set new Authority for Token Account
-  // returns "TransactionSignature"
-  const newTokenAccountOwner = await setAuthority(
-    connection, // connection to Solana
-    owner, // payer
-    tokenAccount, // Token Account to set new owner
-    owner, // current owner of Token Account
-    AuthorityType.AccountOwner, // Authority Type (MintToken: 0)
-    newOwner.publicKey // new owner of Token Account
+  console.log(
+    `https://explorer.solana.com/tx/${closeTokenAccount}?cluster=devnet`
   );
-
-  console.log(newTokenAccountOwner);
-
-  // console.log(
-  //   `Our new token is ${tokenData.tokenAddress.toBase58()} and all of the supply (${totalSupply}) resides in token account ${tokenData.tokenAddress.toBase58()}`
-  // );
 }
 
-main().then(() => {
-  process.exit();
-});
+main()
+  .then(() => {
+    console.log("Finished successfully");
+  })
+  .catch((error) => {
+    console.error(error);
+  });
 
-class TokenData {
-  tokenAddress: PublicKey;
-  tokenAccount: PublicKey;
-
-  constructor(tokenAddress: PublicKey, tokenAccount: PublicKey) {
-    this.tokenAddress = tokenAddress;
-    this.tokenAccount = tokenAccount;
-  }
-}
-
-async function createNewToken(
-  connection: Connection,
-  signer: Keypair,
-  totalSupply: number
-): Promise<TokenData> {
-  const mintAuthority = Keypair.generate();
-
-  const mint = await createMint(
-    connection,
-    signer,
-    mintAuthority.publicKey,
-    null,
-    9 // We are using 9 to match the CLI decimal default exactly
-  );
-
-  console.log("Our token address is:", mint.toBase58());
-
-  const mintInfo = await getMint(connection, mint);
-
-  console.log("The initial supply of tokens is:", mintInfo.supply);
-
-  const tokenAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    signer,
-    mint,
-    signer.publicKey
-  );
-
-  console.log(
-    "Our new associated token account is:",
-    tokenAccount.address.toBase58()
-  );
-  console.log(
-    `Our new associated token account has ${tokenAccount.amount} tokens`
-  );
-
-  await mintTo(
-    connection,
-    signer,
-    mint,
-    tokenAccount.address,
-    mintAuthority,
-    totalSupply
-  );
-
-  const updatedTokenAccountInfo = await getAccount(
-    connection,
-    tokenAccount.address
-  );
-  const updatedMintInfo = await getMint(connection, mint);
-
-  console.log(
-    `The associated account ${tokenAccount.address.toBase58()} now has ${
-      updatedTokenAccountInfo.amount
-    } tokens`
-  );
-  console.log(
-    `The total supply of ${mintInfo.address.toBase58()} is now ${
-      updatedMintInfo.supply
-    }`
-  );
-
-  setAuthority(
-    connection,
-    signer,
-    mint,
-    mintAuthority,
-    AuthorityType.MintTokens,
-    null
-  );
-
-  return new TokenData(mint, tokenAccount.address);
+function initializeKeypair(): web3.Keypair {
+  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
+  const secretKey = Uint8Array.from(secret);
+  const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
+  return keypairFromSecretKey;
 }
