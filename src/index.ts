@@ -27,7 +27,7 @@ async function main() {
   );
 
   console.log(
-    `https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`
+    `Token Mint: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`
   );
 
   // generate a new Keypair for the Token Account
@@ -43,7 +43,7 @@ async function main() {
   );
 
   console.log(
-    `https://explorer.solana.com/address/${tokenAccount.toString()}?cluster=devnet`
+    `User Token Account: https://explorer.solana.com/address/${tokenAccount.toString()}?cluster=devnet`
   );
 
   // createAssociatedTokenAccount returns "PublicKey" of Associated Token Account
@@ -56,7 +56,7 @@ async function main() {
   );
 
   console.log(
-    `https://explorer.solana.com/address/${associatedTokenAccount.toString()}?cluster=devnet`
+    `User Associated Token Account: https://explorer.solana.com/address/${associatedTokenAccount.toString()}?cluster=devnet`
   );
 
   // mintTo returns "TransactionSignature"
@@ -69,12 +69,17 @@ async function main() {
     10000 // amount tokens to mint
   );
 
-  console.log(`https://explorer.solana.com/tx/${mintTokens}?cluster=devnet`);
-
-  // check Account.amount = mintAmount
-  const Account = await getAccount(connection, associatedTokenAccount);
   console.log(
-    `https://explorer.solana.com/address/${Account.address}?cluster=devnet`
+    `Mint Token Transaction: https://explorer.solana.com/tx/${mintTokens}?cluster=devnet`
+  );
+
+  // check tokens minted to Token Account
+  const Account = await getAccount(connection, associatedTokenAccount);
+
+  console.log("User Associated Token Account Balance:", Number(Account.amount));
+
+  console.log(
+    `User Associated Token Account: https://explorer.solana.com/address/${Account.address}?cluster=devnet`
   );
 
   // generate new Keypair for receiver
@@ -99,10 +104,34 @@ async function main() {
     2500 // amount of Tokens to send
   );
 
-  console.log(`https://explorer.solana.com/tx/${tokenTransfer}?cluster=devnet`);
+  console.log(
+    `Transfer Transaction: https://explorer.solana.com/tx/${tokenTransfer}?cluster=devnet`
+  );
+
+  // check tokens tranferred from user
+  const userAccountAfterTransfer = await getAccount(
+    connection,
+    associatedTokenAccount
+  );
 
   console.log(
-    `https://explorer.solana.com/address/${receiverAssociatedTokenAccount}?cluster=devnet`
+    "User Associated Token Account Balance:",
+    Number(userAccountAfterTransfer.amount)
+  );
+
+  // check tokens tranferred to receiver
+  const receiverAccount = await getAccount(
+    connection,
+    receiverAssociatedTokenAccount
+  );
+
+  console.log(
+    "Receiver Associated Token Account Balance:",
+    Number(receiverAccount.amount)
+  );
+
+  console.log(
+    `Receiver Associated Token Account: https://explorer.solana.com/address/${receiverAccount.address}?cluster=devnet`
   );
 
   // burn Tokens
@@ -116,7 +145,20 @@ async function main() {
     2500 // Amount to burn
   );
 
-  console.log(`https://explorer.solana.com/tx/${burnToken}?cluster=devnet`);
+  // check tokens burned from user
+  const userAccountAfterBurn = await getAccount(
+    connection,
+    associatedTokenAccount
+  );
+
+  console.log(
+    "User Associated Token Account Balance:",
+    Number(userAccountAfterBurn.amount)
+  );
+
+  console.log(
+    `Burn Transaction: https://explorer.solana.com/tx/${burnToken}?cluster=devnet`
+  );
 
   // close Token Account
   // returns "TransactionSignature"
@@ -129,7 +171,7 @@ async function main() {
   );
 
   console.log(
-    `https://explorer.solana.com/tx/${closeTokenAccount}?cluster=devnet`
+    `Close Account Transaction: https://explorer.solana.com/tx/${closeTokenAccount}?cluster=devnet`
   );
 }
 
