@@ -1,11 +1,9 @@
 import web3 = require("@solana/web3.js");
 import {
   createMint,
-  createAccount,
-  createAssociatedTokenAccount,
+  getOrCreateAssociatedTokenAccount,
   mintTo,
   transfer,
-  getAccount,
   burn,
   closeAccount,
 } from "@solana/spl-token";
@@ -15,163 +13,196 @@ Dotenv.config();
 async function main() {
   const user = initializeKeypair();
   const connection = new web3.Connection(web3.clusterApiUrl("devnet"));
-  await connection.requestAirdrop(user.publicKey, web3.LAMPORTS_PER_SOL * 1);
+  await connection.requestAirdrop(user.publicKey, web3.LAMPORTS_PER_SOL * 2);
 
-  // createMint returns "PublicKey" of Mint
-  const mint = await createMint(
-    connection, // connection to Solana cluster
-    user, // payer
-    user.publicKey, // mint authority
-    null, // freeze authority
-    2 // decimals
+  const mint = await createNewMint(
+    connection,
+    user,
+    user.publicKey,
+    user.publicKey,
+    2
   );
 
-  console.log(
-    `Token Mint: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`
+  const tokenAccount = await createTokenAccount(
+    connection,
+    user,
+    mint,
+    user.publicKey
   );
 
-  // generate a new Keypair for the Token Account
-  const tokenKeyPair = web3.Keypair.generate();
+  await mintTokens(connection, user, mint, tokenAccount.address, user, 100);
 
-  // createAccount returns "PublicKey" of Token Account
-  const tokenAccount = await createAccount(
-    connection, // connection to Solana cluster
-    user, // payer
-    mint, // token mint
-    user.publicKey, // token account owner
-    tokenKeyPair // new token address
-  );
-
-  console.log(
-    `User Token Account: https://explorer.solana.com/address/${tokenAccount.toString()}?cluster=devnet`
-  );
-
-  // createAssociatedTokenAccount returns "PublicKey" of Associated Token Account
-  // Associated Token Account is PDA with user address and mint address as seeds
-  const associatedTokenAccount = await createAssociatedTokenAccount(
-    connection, //connection to Solana cluster
-    user, // payer
-    mint, // token mint
-    user.publicKey // token account owner
-  );
-
-  console.log(
-    `User Associated Token Account: https://explorer.solana.com/address/${associatedTokenAccount.toString()}?cluster=devnet`
-  );
-
-  // mintTo returns "TransactionSignature"
-  const mintTokens = await mintTo(
-    connection, // connection to Solana cluster
-    user, // payer
-    mint, // mint
-    associatedTokenAccount, // mint tokens to this token account
-    user, // mint authority
-    10000 // amount tokens to mint
-  );
-
-  console.log(
-    `Mint Token Transaction: https://explorer.solana.com/tx/${mintTokens}?cluster=devnet`
-  );
-
-  // check tokens minted to Token Account
-  const Account = await getAccount(connection, associatedTokenAccount);
-
-  console.log("User Associated Token Account Balance:", Number(Account.amount));
-
-  console.log(
-    `User Associated Token Account: https://explorer.solana.com/address/${Account.address}?cluster=devnet`
-  );
-
-  // generate new Keypair for receiver
   const receiver = web3.Keypair.generate();
-
-  // create new Associated Token Account for receiver
-  const receiverAssociatedTokenAccount = await createAssociatedTokenAccount(
-    connection, //connection to Solana cluster
-    user, // payer
-    mint, // token mint
-    receiver.publicKey // token account owner
+  await connection.requestAirdrop(
+    receiver.publicKey,
+    web3.LAMPORTS_PER_SOL * 1
   );
-
-  // transfer Tokens
-  // returns "TransactionSignature"
-  const tokenTransfer = await transfer(
-    connection, // connection to Solana cluster
-    user, // payer
-    associatedTokenAccount, // Token Account send Tokens
-    receiverAssociatedTokenAccount, // Token Account receive Tokens
-    user, // owner of Token Account to send from
-    2500 // amount of Tokens to send
-  );
-
-  console.log(
-    `Transfer Transaction: https://explorer.solana.com/tx/${tokenTransfer}?cluster=devnet`
-  );
-
-  // check tokens tranferred from user
-  const userAccountAfterTransfer = await getAccount(
+  const receiverTokenAccount = await createTokenAccount(
     connection,
-    associatedTokenAccount
+    user,
+    mint,
+    receiver.publicKey
   );
 
-  console.log(
-    "User Associated Token Account Balance:",
-    Number(userAccountAfterTransfer.amount)
-  );
-
-  // check tokens tranferred to receiver
-  const receiverAccount = await getAccount(
+  await transferTokens(
     connection,
-    receiverAssociatedTokenAccount
+    user,
+    tokenAccount.address,
+    receiverTokenAccount.address,
+    user,
+    100
   );
 
-  console.log(
-    "Receiver Associated Token Account Balance:",
-    Number(receiverAccount.amount)
-  );
-
-  console.log(
-    `Receiver Associated Token Account: https://explorer.solana.com/address/${receiverAccount.address}?cluster=devnet`
-  );
-
-  // burn Tokens
-  // returns "TransactionSignature"
-  const burnToken = await burn(
-    connection, // connection to Solana cluster
-    user, // payer
-    associatedTokenAccount, // Token Account burn from
-    mint, // Token Mint
-    user, // Token Account owner
-    2500 // Amount to burn
-  );
-
-  // check tokens burned from user
-  const userAccountAfterBurn = await getAccount(
+  await burnTokens(
     connection,
-    associatedTokenAccount
+    receiver,
+    receiverTokenAccount.address,
+    mint,
+    receiver,
+    100
+  );
+
+  await closeTokenAccount(
+    connection,
+    receiver,
+    receiverTokenAccount.address,
+    receiver.publicKey,
+    receiver
+  );
+}
+
+function initializeKeypair(): web3.Keypair {
+  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
+  const secretKey = Uint8Array.from(secret);
+  const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
+  return keypairFromSecretKey;
+}
+
+async function createNewMint(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  mintAuthority: web3.PublicKey,
+  freezeAuthority: web3.PublicKey,
+  decimal: number
+) {
+  const mint = await createMint(
+    connection,
+    payer,
+    mintAuthority,
+    freezeAuthority,
+    decimal
   );
 
   console.log(
-    "User Associated Token Account Balance:",
-    Number(userAccountAfterBurn.amount)
+    `Token Mint: https://explorer.solana.com/address/${mint}?cluster=devnet`
+  );
+
+  return mint;
+}
+
+async function createTokenAccount(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  mint: web3.PublicKey,
+  owner: web3.PublicKey
+) {
+  const tokenAccount = await getOrCreateAssociatedTokenAccount(
+    connection,
+    payer,
+    mint,
+    owner
   );
 
   console.log(
-    `Burn Transaction: https://explorer.solana.com/tx/${burnToken}?cluster=devnet`
+    `Token Account: https://explorer.solana.com/address/${tokenAccount.address}?cluster=devnet`
   );
 
-  // close Token Account
-  // returns "TransactionSignature"
-  const closeTokenAccount = await closeAccount(
-    connection, // connection to Solana cluster
-    user, // payer
-    tokenAccount, // token account to close
-    user.publicKey, // account to return token account rent to
-    user // token account owner
+  return tokenAccount;
+}
+
+async function mintTokens(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  mint: web3.PublicKey,
+  destination: web3.PublicKey,
+  authority: web3.Keypair,
+  amount: number
+) {
+  const transactionSignature = await mintTo(
+    connection,
+    payer,
+    mint,
+    destination,
+    authority,
+    amount
   );
 
   console.log(
-    `Close Account Transaction: https://explorer.solana.com/tx/${closeTokenAccount}?cluster=devnet`
+    `Mint Token Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  );
+}
+
+async function transferTokens(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  source: web3.PublicKey,
+  destination: web3.PublicKey,
+  owner: web3.Keypair,
+  amount: number
+) {
+  const transactionSignature = await transfer(
+    connection,
+    payer,
+    source,
+    destination,
+    owner,
+    amount
+  );
+
+  console.log(
+    `Transfer Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  );
+}
+
+async function burnTokens(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  account: web3.PublicKey,
+  mint: web3.PublicKey,
+  owner: web3.Keypair,
+  amount: number
+) {
+  const transactionSignature = await burn(
+    connection,
+    payer,
+    account,
+    mint,
+    owner,
+    amount
+  );
+
+  console.log(
+    `Burn Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  );
+}
+
+async function closeTokenAccount(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  account: web3.PublicKey,
+  destination: web3.PublicKey,
+  authority: web3.Keypair
+) {
+  const transactionSignature = await closeAccount(
+    connection,
+    payer,
+    account,
+    destination,
+    authority
+  );
+
+  console.log(
+    `Close Account Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
   );
 }
 
@@ -182,10 +213,3 @@ main()
   .catch((error) => {
     console.error(error);
   });
-
-function initializeKeypair(): web3.Keypair {
-  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
-  const secretKey = Uint8Array.from(secret);
-  const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
-  return keypairFromSecretKey;
-}
