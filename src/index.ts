@@ -6,6 +6,10 @@ import {
   transfer,
   burn,
   closeAccount,
+  getMinimumBalanceForRentExemptMint,
+  createInitializeMintInstruction,
+  MINT_SIZE,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import Dotenv from "dotenv";
 Dotenv.config();
@@ -14,6 +18,36 @@ async function main() {
   const user = initializeKeypair();
   const connection = new web3.Connection(web3.clusterApiUrl("devnet"));
   await connection.requestAirdrop(user.publicKey, web3.LAMPORTS_PER_SOL * 2);
+
+  //TEST MINT
+  const transaction = new web3.Transaction();
+  const newMint = web3.Keypair.generate();
+  const lamports = await getMinimumBalanceForRentExemptMint(connection);
+
+  transaction.add(
+    web3.SystemProgram.createAccount({
+      fromPubkey: user.publicKey,
+      newAccountPubkey: newMint.publicKey,
+      space: MINT_SIZE,
+      lamports,
+      programId: TOKEN_PROGRAM_ID,
+    }),
+    createInitializeMintInstruction(
+      newMint.publicKey,
+      2,
+      user.publicKey,
+      user.publicKey,
+      TOKEN_PROGRAM_ID
+    )
+  );
+
+  const sig = await web3.sendAndConfirmTransaction(connection, transaction, [
+    user,
+    newMint,
+  ]);
+
+  console.log(sig);
+  //TEST END
 
   const mint = await createNewMint(
     connection,
@@ -37,7 +71,7 @@ async function main() {
     receiver.publicKey,
     web3.LAMPORTS_PER_SOL * 1
   );
-  
+
   const receiverTokenAccount = await createTokenAccount(
     connection,
     user,
