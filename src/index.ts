@@ -37,6 +37,7 @@ async function main() {
     receiver.publicKey,
     web3.LAMPORTS_PER_SOL * 1
   );
+  
   const receiverTokenAccount = await createTokenAccount(
     connection,
     user,
