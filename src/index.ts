@@ -1,108 +1,29 @@
 import web3 = require("@solana/web3.js");
-import {
-  createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
-  transfer,
-  burn,
-  closeAccount,
-  getMinimumBalanceForRentExemptMint,
-  createInitializeMintInstruction,
-  MINT_SIZE,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
 import Dotenv from "dotenv";
+import * as token from "@solana/spl-token";
+import * as fs from "fs";
 Dotenv.config();
-
-async function main() {
-  const user = initializeKeypair();
-  const connection = new web3.Connection(web3.clusterApiUrl("devnet"));
-  await connection.requestAirdrop(user.publicKey, web3.LAMPORTS_PER_SOL * 2);
-
-  const mint = await createNewMint(
-    connection,
-    user,
-    user.publicKey,
-    user.publicKey,
-    2
-  );
-
-  const tokenAccount = await createTokenAccount(
-    connection,
-    user,
-    mint,
-    user.publicKey
-  );
-
-  await mintTokens(connection, user, mint, tokenAccount.address, user, 100);
-
-  const receiver = web3.Keypair.generate();
-  await connection.requestAirdrop(
-    receiver.publicKey,
-    web3.LAMPORTS_PER_SOL * 1
-  );
-
-  const receiverTokenAccount = await createTokenAccount(
-    connection,
-    user,
-    mint,
-    receiver.publicKey
-  );
-
-  await transferTokens(
-    connection,
-    user,
-    tokenAccount.address,
-    receiverTokenAccount.address,
-    user,
-    100
-  );
-
-  await burnTokens(
-    connection,
-    receiver,
-    receiverTokenAccount.address,
-    mint,
-    receiver,
-    100
-  );
-
-  await closeTokenAccount(
-    connection,
-    receiver,
-    receiverTokenAccount.address,
-    receiver.publicKey,
-    receiver
-  );
-}
-
-function initializeKeypair(): web3.Keypair {
-  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
-  const secretKey = Uint8Array.from(secret);
-  const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
-  return keypairFromSecretKey;
-}
 
 async function createNewMint(
   connection: web3.Connection,
   payer: web3.Keypair,
   mintAuthority: web3.PublicKey,
   freezeAuthority: web3.PublicKey,
-  decimal: number
-) {
-  const mint = await createMint(
+  decimals: number
+): Promise<web3.PublicKey> {
+  const tokenMint = await token.createMint(
     connection,
     payer,
     mintAuthority,
     freezeAuthority,
-    decimal
+    decimals
   );
 
   console.log(
-    `Token Mint: https://explorer.solana.com/address/${mint}?cluster=devnet`
+    `Token Mint: https://explorer.solana.com/address/${tokenMint}?cluster=devnet`
   );
 
-  return mint;
+  return tokenMint;
 }
 
 async function createTokenAccount(
@@ -111,7 +32,7 @@ async function createTokenAccount(
   mint: web3.PublicKey,
   owner: web3.PublicKey
 ) {
-  const tokenAccount = await getOrCreateAssociatedTokenAccount(
+  const tokenAccount = await token.getOrCreateAssociatedTokenAccount(
     connection,
     payer,
     mint,
@@ -133,7 +54,7 @@ async function mintTokens(
   authority: web3.Keypair,
   amount: number
 ) {
-  const transactionSignature = await mintTo(
+  const transactionSignature = await token.mintTo(
     connection,
     payer,
     mint,
@@ -155,7 +76,7 @@ async function transferTokens(
   owner: web3.Keypair,
   amount: number
 ) {
-  const transactionSignature = await transfer(
+  const transactionSignature = await token.transfer(
     connection,
     payer,
     source,
@@ -177,7 +98,7 @@ async function burnTokens(
   owner: web3.Keypair,
   amount: number
 ) {
-  const transactionSignature = await burn(
+  const transactionSignature = await token.burn(
     connection,
     payer,
     account,
@@ -191,24 +112,45 @@ async function burnTokens(
   );
 }
 
-async function closeTokenAccount(
-  connection: web3.Connection,
-  payer: web3.Keypair,
-  account: web3.PublicKey,
-  destination: web3.PublicKey,
-  authority: web3.Keypair
-) {
-  const transactionSignature = await closeAccount(
+async function main() {
+  const user = initializeKeypair();
+  const connection = await new web3.Connection(web3.clusterApiUrl("devnet"));
+  await airdropSolIfNeeded(user, connection);
+  const mint = await createNewMint(
     connection,
-    payer,
-    account,
-    destination,
-    authority
+    user,
+    user.publicKey,
+    user.publicKey,
+    2
   );
 
-  console.log(
-    `Close Account Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  const tokenAccount = await createTokenAccount(
+    connection,
+    user,
+    mint,
+    user.publicKey
   );
+
+  await mintTokens(connection, user, mint, tokenAccount.address, user, 100);
+
+  const receiver = web3.Keypair.generate().publicKey;
+  const receiverTokenAccount = await createTokenAccount(
+    connection,
+    user,
+    mint,
+    receiver
+  );
+
+  await transferTokens(
+    connection,
+    user,
+    tokenAccount.address,
+    receiverTokenAccount.address,
+    user,
+    50
+  );
+
+  await burnTokens(connection, user, tokenAccount.address, mint, user, 25);
 }
 
 main()
@@ -218,3 +160,29 @@ main()
   .catch((error) => {
     console.error(error);
   });
+
+function initializeKeypair(): web3.Keypair {
+  if (!process.env.PRIVATE_KEY) {
+    console.log("Creating .env file");
+    const signer = web3.Keypair.generate();
+    fs.writeFileSync(".env", `PRIVATE_KEY=[${signer.secretKey.toString()}]`);
+    return signer;
+  }
+
+  const secret = JSON.parse(process.env.PRIVATE_KEY ?? "") as number[];
+  const secretKey = Uint8Array.from(secret);
+  const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
+  return keypairFromSecretKey;
+}
+
+async function airdropSolIfNeeded(
+  signer: web3.Keypair,
+  connection: web3.Connection
+) {
+  const balance = await connection.getBalance(signer.publicKey);
+  console.log("Current balance is", balance);
+  if (balance < web3.LAMPORTS_PER_SOL) {
+    console.log("Airdropping 1 SOL...");
+    await connection.requestAirdrop(signer.publicKey, web3.LAMPORTS_PER_SOL);
+  }
+}
