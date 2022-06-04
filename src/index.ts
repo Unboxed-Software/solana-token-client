@@ -181,7 +181,6 @@ async function main() {
     )
 
     const delegate = web3.Keypair.generate();
-    console.log(delegate.publicKey.toString())
 
     await approveDelegate(
       connection,
