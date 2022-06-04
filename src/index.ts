@@ -181,7 +181,6 @@ async function main() {
     )
 
     const delegate = web3.Keypair.generate();
-
     await approveDelegate(
       connection,
       user,
@@ -215,7 +214,14 @@ async function main() {
       user.publicKey,
     )
 
-    await burnTokens(connection, user, tokenAccount.address, mint, user, 25 * 10 ** mintInfo.decimals)
+    await burnTokens(
+      connection,
+      user,
+      tokenAccount.address,
+      mint,
+      user,
+      25 * 10 ** mintInfo.decimals
+    )
 }
 
 main()
