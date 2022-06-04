@@ -27,9 +27,10 @@ async function airdropSolIfNeeded(
     connection: web3.Connection
 ) {
     const balance = await connection.getBalance(signer.publicKey)
-    console.log("Current balance is", balance)
+    console.log("Current balance is", balance / web3.LAMPORTS_PER_SOL)
     if (balance < web3.LAMPORTS_PER_SOL) {
         console.log("Airdropping 1 SOL...")
-        await connection.requestAirdrop(signer.publicKey, web3.LAMPORTS_PER_SOL)
+        const signature = await connection.requestAirdrop(signer.publicKey, web3.LAMPORTS_PER_SOL)
+        await connection.confirmTransaction(signature);
     }
 }
