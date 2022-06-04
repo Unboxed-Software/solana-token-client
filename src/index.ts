@@ -66,6 +66,46 @@ async function mintTokens(
     )
 }
 
+async function approveDelegate(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  account: web3.PublicKey,
+  delegate: web3.PublicKey,
+  owner: web3.Signer | web3.PublicKey,
+  amount: number
+) {
+  const transactionSignature = await token.approve(
+    connection,
+    payer,
+    account,
+    delegate,
+    owner,
+    amount
+  )
+
+  console.log(
+    `Approve Delegate Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  )
+}
+
+async function revokeDelegate(
+  connection: web3.Connection,
+  payer: web3.Keypair,
+  account: web3.PublicKey,
+  owner: web3.Signer | web3.PublicKey,
+) {
+  const transactionSignature = await token.revoke(
+    connection,
+    payer,
+    account,
+    owner,
+  )
+
+  console.log(
+    `Revote Delegate Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  )
+}
+
 async function transferTokens(
     connection: web3.Connection,
     payer: web3.Keypair,
@@ -121,6 +161,8 @@ async function main() {
         user.publicKey,
         2
     )
+    
+    const mintInfo = await token.getMint(connection, mint);
 
     const tokenAccount = await createTokenAccount(
         connection,
@@ -129,7 +171,26 @@ async function main() {
         user.publicKey
     )
 
-    await mintTokens(connection, user, mint, tokenAccount.address, user, 100)
+    await mintTokens(
+      connection,
+      user,
+      mint,
+      tokenAccount.address,
+      user,
+      100 * 10 ** mintInfo.decimals
+    )
+
+    const delegate = web3.Keypair.generate();
+    console.log(delegate.publicKey.toString())
+
+    await approveDelegate(
+      connection,
+      user,
+      tokenAccount.address,
+      delegate.publicKey,
+      user.publicKey,
+      50 * 10 ** mintInfo.decimals
+    )
 
     const receiver = web3.Keypair.generate().publicKey
     const receiverTokenAccount = await createTokenAccount(
@@ -140,15 +201,22 @@ async function main() {
     )
 
     await transferTokens(
-        connection,
-        user,
-        tokenAccount.address,
-        receiverTokenAccount.address,
-        user,
-        50
+      connection,
+      user,
+      tokenAccount.address,
+      receiverTokenAccount.address,
+      delegate,
+      50 * 10 ** mintInfo.decimals
     )
 
-    await burnTokens(connection, user, tokenAccount.address, mint, user, 25)
+    await revokeDelegate(
+      connection,
+      user,
+      tokenAccount.address,
+      user.publicKey,
+    )
+
+    await burnTokens(connection, user, tokenAccount.address, mint, user, 25 * 10 ** mintInfo.decimals)
 }
 
 main()
