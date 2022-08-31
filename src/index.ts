@@ -1,6 +1,19 @@
 import { initializeKeypair } from "./initializeKeypair"
 import * as web3 from "@solana/web3.js"
 import * as token from "@solana/spl-token"
+import {
+  Metaplex,
+  keypairIdentity,
+  bundlrStorage,
+  toMetaplexFile,
+  findMetadataPda,
+  useOperation,
+} from "@metaplex-foundation/js"
+import {
+  DataV2,
+  createCreateMetadataAccountV2Instruction,
+} from "@metaplex-foundation/mpl-token-metadata"
+import * as fs from "fs"
 
 async function createNewMint(
   connection: web3.Connection,
@@ -93,6 +106,76 @@ async function transferTokens(
   )
 }
 
+async function createTokenMetadata(
+  connection: web3.Connection,
+  metaplex: Metaplex,
+  mint: web3.PublicKey,
+  payer: web3.Keypair,
+  name: string,
+  symbol: string,
+  description: string
+) {
+  // read our image from file
+  const buffer = fs.readFileSync("assets/sun.png")
+
+  const file = toMetaplexFile(buffer, "sun.png")
+
+  const imageUri = await metaplex.storage().upload(file)
+  console.log("image uri:", imageUri)
+
+  const { uri } = await metaplex
+    .nfts()
+    .uploadMetadata({
+      name: name,
+      description: description,
+      image: imageUri,
+    })
+    .run()
+
+  console.log("metadata uri:", uri)
+
+  const metadataPDA = await findMetadataPda(mint)
+
+  const tokenMetadata = {
+    name: name,
+    symbol: symbol,
+    uri: uri,
+    sellerFeeBasisPoints: 0,
+    creators: null,
+    collection: null,
+    uses: null,
+  } as DataV2
+
+  const instruction = createCreateMetadataAccountV2Instruction(
+    {
+      metadata: metadataPDA,
+      mint: mint,
+      mintAuthority: payer.publicKey,
+      payer: payer.publicKey,
+      updateAuthority: payer.publicKey,
+    },
+    {
+      createMetadataAccountArgsV2: {
+        data: tokenMetadata,
+        isMutable: true,
+      },
+    }
+  )
+
+  const transaction = new web3.Transaction()
+  transaction.add(instruction)
+
+  const transactionSignature = await web3.sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [payer]
+  )
+
+  console.log(
+    `Create Metadata Account: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`
+  )
+}
+
 async function main() {
   const connection = new web3.Connection(web3.clusterApiUrl("devnet"))
   const user = await initializeKeypair(connection)
@@ -105,6 +188,26 @@ async function main() {
     user.publicKey,
     user.publicKey,
     2
+  )
+
+  const metaplex = Metaplex.make(connection)
+    .use(keypairIdentity(user))
+    .use(
+      bundlrStorage({
+        address: "https://devnet.bundlr.network",
+        providerUrl: "https://api.devnet.solana.com",
+        timeout: 60000,
+      })
+    )
+
+  await createTokenMetadata(
+    connection,
+    metaplex,
+    mint,
+    user,
+    "Sun Token",
+    "SUN",
+    "A really bright token"
   )
 
   const tokenAccount = await createTokenAccount(
