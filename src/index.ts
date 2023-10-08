@@ -151,7 +151,7 @@ async function burnTokens(
 }
 
 async function main() {
-    const connection = new web3.Connection(web3.clusterApiUrl("devnet"))
+    const connection = new web3.Connection(web3.clusterApiUrl("devnet"), 'confirmed')
     const user = await initializeKeypair(connection)
 
     const mint = await createNewMint(
